@@ -1,107 +1,78 @@
-// Other imports remain the same
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAuth, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { useAuth } from '../AuthContext';
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faGoogle } from '@fortawesome/free-brands-svg-icons';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import {signInWithEmailAndPassword } from 'firebase/auth';
 import appfirebase from '../credenciales';
 
 const Register = () => {
   const [newUser, setNewUser] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const auth = getAuth();
+  const auth = getAuth(appfirebase);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setNewUser({ ...newUser, [name]: value });  // Asegúrate de que este manejo está capturando correctamente los valores de los campos de entrada.
-};
-
- 
-
-
-const handleRegistration = (email, firstName,lastName, firebaseUserId) => {
-  const newUser = {
-      id: firebaseUserId, // UID from Firebase
-      correo: email,
-      nombre: firstName,
-      apellido: lastName,
-      edad: '0',
-      direccion: 'Dirección por defecto'
+    setNewUser({ ...newUser, [name]: value });
   };
 
-  fetch('http://localhost:3001/api/user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser)
-  })
-  .then(response => {
-      if (!response.ok) throw new Error('Failed to register user in local DB');
-      return response.json();
-  })
-  .then(info => {
-      console.log('New user registered in DB:', info);
-      navigate('/');
-  })
-  .catch(error => {
-      console.error('Error registering user in DB:', error);
+  const handleRegistration = async (email, password) => {
+    try {
+      // Guardar el usuario en la base de datos local y enviar correo de verificación
+      const response = await fetch('http://localhost:3001/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to register user in local DB');
+      }
+
+      const data = await response.json();
+      console.log('User registered and verification email sent:', data);
+      
+      // Navegar a la página de verificación de correo
+      navigate('/verify-email', { state: { email, password } });
+    } catch (error) {
+      console.error('Error during registration:', error);
       setError(error.message);
-  });
-};
+    }
+  };
 
-  
+  const handleGoogleSignIn = () => {
+    const provider = new GoogleAuthProvider();
+    provider.addScope('profile');
+    provider.addScope('email');
 
+    signInWithPopup(auth, provider)
+      .then(async (result) => {
+        const user = result.user;
+        await fetch('http://localhost:3001/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email })
+        });
 
-const handleGoogleSignIn = () => {
-  const provider = new GoogleAuthProvider();
-  provider.addScope('profile');
-  provider.addScope('email');
-  
-  signInWithPopup(auth, provider)
-      .then((result) => {
-          const user = result.user;
-          // Asegúrate de pasar el ID de usuario de Firebase correcto, y el correo y nombre separados correctamente
-          const nameParts = user.displayName ? user.displayName.split(' ') : ['Nombre', 'Apellido'];
-          const firstName = nameParts[0];
-          const lastName = nameParts.length > 1 ? nameParts[1] : '';
-          handleRegistration(user.email, firstName, lastName, user.uid); // Pasar correo, primer nombre, y UID
-          login(); // Actualiza el estado de login en tu contexto
-          navigate('/'); // Navega a la página principal
+        await signOut(auth);
+        console.log('User registered with Google and logged out. Verification email sent.');
+        navigate('/verify-email', { state: { email: user.email } });
       })
       .catch((error) => {
-          console.error('Error:', error.message);
-          setError(error.message);
+        console.error('Error:', error.message);
+        setError(error.message);
       });
-};
+  };
 
-
-
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    console.log("Attempting to register with:", newUser.email, newUser.password);  // Asegúrate de que ambos valores se muestren correctamente
     if (!newUser.email || !newUser.password) {
-        setError("Email and password are required");  // Verifica que ambos campos estén presentes
-        return;
+      setError("Email and password are required");
+      return;
     }
-
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password);
-      console.log('Firebase user created:', userCredential.user.uid);
-      handleRegistration(newUser.email, newUser.password, userCredential.user.uid); // Pasar UID para la creación en la base de datos
-    } catch (error) {
-      console.error('Error during sign up:', error);
-      setError(error.message);
-    }
-};
-
-
-
-  
+    handleRegistration(newUser.email, newUser.password);
+  };
 
   return (
     <div className="container mt-5">

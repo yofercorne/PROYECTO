@@ -5,10 +5,16 @@ const cors = require('cors');
 const app = express();
 const upload = require('./uploadConfig');  // Importa la configuración de multer
 app.use('/uploads', express.static('uploads'));
+app.use(express.json());
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const admin = require('./firebaseconfig'); // Importa la configuración de Firebase Admin SDK
 
 const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(bodyParser.json());
+
+
 
 // Conexión a MySQL
 const db = mysql.createConnection({
@@ -24,6 +30,146 @@ db.connect(err => {
         return;
     }
     console.log('Connected to database with thread ID: ' + db.threadId);
+});
+
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+// ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//                                  REGISTRO    
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'jobnnest@gmail.com',
+    pass: 'itvbqjsgligstddc'
+  }
+});
+
+// Función para extraer información del correo electrónico
+const extractUserInfoFromEmail = (email) => {
+  const parts = email.split('@');
+  const localPart = parts[0];
+  const [nombre, apellido] = localPart.split('.');
+  return {
+    nombre: nombre ? nombre : 'sin nombre',
+    apellido: apellido ? apellido : 'sin apellido'
+  };
+};
+
+
+app.post('/register', async (req, res) => {
+  const { email, password } = req.body;
+  console.log('Received user data:', req.body);
+
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
+  }
+
+  // Generar el código de verificación y almacenar temporalmente en memoria o en una base de datos temporal
+  const verificationCode = crypto.randomBytes(3).toString('hex');
+  const user = { email, password, verificationCode, verified: false };
+
+  // Extraer información del correo electrónico
+  const userInfo = extractUserInfoFromEmail(email);
+
+  // Almacenar el código de verificación temporalmente en memoria
+  global.verificationStore = global.verificationStore || {};
+  global.verificationStore[email] = { password, verificationCode, ...userInfo };
+
+  transporter.sendMail({
+    from: 'jobnnest@gmail.com',
+    to: email,
+    subject: 'Código de verificación',
+    text: `Tu código de verificación es: ${verificationCode}`
+  }, (err, info) => {
+    if (err) {
+      console.error('Error sending email:', err);
+      return res.status(500).json({ message: 'Failed to send verification email.', error: err.message });
+    }
+    res.status(200).json({ message: 'Usuario registrado. Por favor, verifica tu correo electrónico.' });
+  });
+});
+
+// Verificar el correo electrónico y crear el usuario en Firebase
+app.post('/verify-email', async (req, res) => {
+  const { email, code } = req.body;
+
+  const storedData = global.verificationStore ? global.verificationStore[email] : null;
+
+  if (!storedData) {
+    return res.status(400).json({ message: 'No se encontró ninguna solicitud de registro para este correo electrónico.' });
+  }
+
+  if (storedData.verificationCode !== code) {
+    return res.status(400).json({ message: 'Código de verificación incorrecto.' });
+  }
+
+  try {
+    let userRecord;
+    try {
+      userRecord = await admin.auth().getUserByEmail(email);
+    } catch (error) {
+      if (error.code === 'auth/user-not-found') {
+        userRecord = await admin.auth().createUser({
+          email,
+          password: storedData.password
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+
+    const sqlInsertUser = 'INSERT INTO users (email, password, verification_code, verified) VALUES (?, ?, ?, ?)';
+    db.query(sqlInsertUser, [email, storedData.password, code, true], (err, result) => {
+      if (err) {
+        return res.status(500).json({ message: 'Failed to register user in users table', error: err.message });
+      }
+
+      const sqlInsertUsuario = 'INSERT INTO usuario (id, correo, nombre, apellido, edad, direccion, foto) VALUES (?, ?, ?, ?, ?, ?, ?)';
+      db.query(sqlInsertUsuario, [userRecord.uid, email, storedData.nombre, storedData.apellido, 0, 'sin direccion', null], (err, result) => {
+        if (err) {
+          return res.status(500).json({ message: 'Failed to register user in usuario table', error: err.message });
+        }
+
+        delete global.verificationStore[email];
+
+        res.status(200).json({ message: 'Correo verificado correctamente. Usuario registrado en Firebase y en ambas tablas de la base de datos local.' });
+      });
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear el usuario en Firebase.', error: error.message });
+  }
+});
+
+// Actualizar el estado de verificación de correo en la base de datos
+app.post('/update-email-verification', (req, res) => {
+  const { email } = req.body;
+  const sql = 'UPDATE users SET verified = 1 WHERE email = ?';
+  db.query(sql, [email], (err, result) => {
+    if (err) {
+      console.error('Error updating email verification status:', err);
+      return res.status(500).json({ message: 'Failed to update email verification status.', error: err.message });
+    }
+    res.status(200).json({ message: 'Email verification status updated successfully.' });
+  });
+});
+
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  const sql = 'SELECT * FROM users WHERE email = ? AND password = ? AND verified = 1';
+
+  db.query(sql, [email, password], (err, result) => {
+    if (err) {
+      console.error('Error logging in:', err);
+      return res.status(500).json({ message: 'Error al iniciar sesión.' });
+    }
+    
+    if (result.length > 0) {
+      res.status(200).json({ message: 'Inicio de sesión exitoso.', user: result[0] });
+    } else {
+      res.status(400).json({ message: 'Correo o contraseña incorrectos, o el correo no ha sido verificado.' });
+    }
+  });
 });
 
 // ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
