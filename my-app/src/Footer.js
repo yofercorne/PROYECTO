@@ -5,10 +5,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFacebookF, faTwitter, faInstagram, faLinkedinIn } from '@fortawesome/free-brands-svg-icons';
 
 const socialLinks = [
-  { icon: faFacebookF, href: 'https://facebook.com', label: 'Facebook' },
-  { icon: faTwitter, href: 'https://twitter.com', label: 'Twitter' },
-  { icon: faInstagram, href: 'https://instagram.com', label: 'Instagram' },
-  { icon: faLinkedinIn, href: 'https://linkedin.com', label: 'LinkedIn' },
+  { icon: faFacebookF, href: 'hhttps://facebook.com', label: 'Facebook' },
+  { icon: faTwitter, href: 'hhttps://twitter.com', label: 'Twitter' },
+  { icon: faInstagram, href: 'hhttps://instagram.com', label: 'Instagram' },
+  { icon: faLinkedinIn, href: 'hhttps://linkedin.com', label: 'LinkedIn' },
 ];
 
 const Footer = () => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { FaStar } from 'react-icons/fa';
+import api from '../api';
 
 const RateService = ({ onRatingSubmitted }) => {
   const { id } = useParams();
@@ -9,7 +10,7 @@ const RateService = ({ onRatingSubmitted }) => {
   const [error, setError] = useState(null);
 
   const handleRatingSubmit = () => {
-    fetch('http://localhost:3001/api/ratings', {
+    fetch(`${api.apiBaseUrl}/api/ratings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

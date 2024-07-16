@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGoogle } from '@fortawesome/free-brands-svg-icons';
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import appfirebase from '../credenciales';
+import './Register.css';
+import registerImage from '../assets/registro.png';
+import api from '../api';
 
 const Register = () => {
   const [newUser, setNewUser] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const auth = getAuth(appfirebase);
 
@@ -19,8 +21,8 @@ const Register = () => {
 
   const handleRegistration = async (email, password) => {
     try {
-      // Guardar el usuario en la base de datos local y enviar correo de verificación
-      const response = await fetch('http://localhost:3001/register', {
+      setLoading(true); // Mostrar modal de carga
+      const response = await fetch(`${api.apiBaseUrl}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -32,12 +34,13 @@ const Register = () => {
 
       const data = await response.json();
       console.log('User registered and verification email sent:', data);
-      
-      // Navegar a la página de verificación de correo
+
       navigate('/verify-email', { state: { email, password } });
     } catch (error) {
       console.error('Error during registration:', error);
       setError(error.message);
+    } finally {
+      setLoading(false); // Ocultar modal de carga
     }
   };
 
@@ -49,15 +52,29 @@ const Register = () => {
     signInWithPopup(auth, provider)
       .then(async (result) => {
         const user = result.user;
-        await fetch('http://localhost:3001/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email })
-        });
+        const response = await fetch(`${api.apiBaseUrl}/check-user?email=${user.email}`);
+        const data = await response.json();
 
-        await signOut(auth);
-        console.log('User registered with Google and logged out. Verification email sent.');
-        navigate('/verify-email', { state: { email: user.email } });
+        if (data.exists) {
+          login(user);
+          navigate('/');
+        } else {
+          await fetch(`${api.apiBaseUrl}/user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: user.uid,
+              correo: user.email,
+              nombre: user.displayName || '',
+              apellido: '',
+              edad: 0,
+              phone: '',
+              foto: user.photoURL || ''
+            })
+          });
+          login(user);
+          navigate('/');
+        }
       })
       .catch((error) => {
         console.error('Error:', error.message);
@@ -75,47 +92,52 @@ const Register = () => {
   };
 
   return (
-    <div className="container mt-5">
-      <div className="row justify-content-center">
-        <div className="col-lg-4 col-md-6 col-sm-8">
-          <div className="card shadow">
-            <div className="card-body">
-              <h3 className="card-title text-center">Registrar</h3>
-              {error && <div className="alert alert-danger">{error}</div>}
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label htmlFor="email" className="form-label">Email</label>
-                  <input
-                    type="email"
-                    className="form-control"
-                    id="email"
-                    name="email"
-                    value={newUser.email}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label htmlFor="password" className="form-label">Contraseña</label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    id="password"
-                    name="password"
-                    value={newUser.password}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="d-grid gap-2">
-                  <button type="submit" className="btn btn-primary">Registrar</button>
-                  <button type="button" className="btn btn-danger" onClick={handleGoogleSignIn}>
-                    <FontAwesomeIcon icon={faGoogle} /> Regístrate con Google
-                  </button>
-                </div>
-              </form>
-            </div>
+    <div className="register-container">
+      {loading && (
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <p>Registrando...</p>
+        </div>
+      )}
+      <div className={`register-content ${loading ? 'blurred' : ''}`}>
+        <div className="register-card">
+          <h3 className="register-title">Crea tu cuenta y encuentra tu empleo ideal</h3>
+          {error && <div className="register-error">{error}</div>}
+          <div className="external-providers">
+            <button type="button" className="btn btn-outline-primary google-btn" onClick={handleGoogleSignIn}>
+              <i className="fab fa-google"></i> Inicia sesión con Google
+            </button>
           </div>
+          <form onSubmit={handleSubmit} className="register-form">
+            <div className="mb-3">
+              <label htmlFor="email" className="form-label">Email</label>
+              <input
+                type="email"
+                className="form-control register-input"
+                id="email"
+                name="email"
+                value={newUser.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="mb-3">
+              <label htmlFor="password" className="form-label">Contraseña</label>
+              <input
+                type="password"
+                className="form-control register-input"
+                id="password"
+                name="password"
+                value={newUser.password}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn-primary register-btn">Registrar</button>
+          </form>
+        </div>
+        <div className="register-image">
+          <img src={registerImage} alt="Register" />
         </div>
       </div>
     </div>

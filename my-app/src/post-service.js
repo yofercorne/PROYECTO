@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import 'react-quill/dist/quill.snow.css';
+import ReactQuill from 'react-quill';
 import './postService.css';
+import infoIcon from './assets/logo2.png';
+import { showConfirmDialog } from './confirmDialog';
+import imagenRelleno from './assets/servicio.jpg';
+import api from './api';
 
 const PostService = () => {
   const { user, isAuthenticated, token } = useAuth();
   const navigate = useNavigate();
   const [serviceData, setServiceData] = useState({
-    dni: '',
     phone: '',
     address: '',
     lat: null,
@@ -15,9 +22,10 @@ const PostService = () => {
     description: '',
     service_type: '',
     modalities: 'Presencial',
-    cost: '',
-    user_img: ''
+    user_img: '',
+    serviceImages: []
   });
+
   const [originalServiceData, setOriginalServiceData] = useState(null);
   const [services, setServices] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -25,6 +33,7 @@ const PostService = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [currentServiceId, setCurrentServiceId] = useState(null);
+  const [isProfileComplete, setIsProfileComplete] = useState(false);
   const addressInputRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -33,6 +42,7 @@ const PostService = () => {
   useEffect(() => {
     if (user && isAuthenticated) {
       fetchServices();
+      checkUserProfile();
     }
   }, [user, isAuthenticated]);
 
@@ -135,7 +145,7 @@ const PostService = () => {
 
   const fetchServices = async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/services/user/${user.uid}`, {
+      const response = await fetch(`${api.apiBaseUrl}/api/services/user/${user.uid}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -148,127 +158,125 @@ const PostService = () => {
     }
   };
 
+  const checkUserProfile = async () => {
+    try {
+      const response = await fetch(`${api.apiBaseUrl}/api/user/${user.uid}`);
+      if (!response.ok) throw new Error('Error fetching user profile');
+      const data = await response.json();
+      const isComplete = data.nombre && data.apellido && data.phone && data.foto;
+      setIsProfileComplete(isComplete);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setServiceData((prevState) => ({ ...prevState, [name]: value }));
   };
 
+  const validatePhone = (phone) => {
+    const phoneRegex = /^\d{9}$/;
+    return phoneRegex.test(phone);
+  };
+
+  const handleDescriptionChange = (value) => {
+    setServiceData((prevState) => ({ ...prevState, description: value }));
+  };
+
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files);
+    setServiceData((prevState) => ({
+      ...prevState,
+      serviceImages: files
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isAuthenticated) {
-      alert('Please log in to publish a service.');
+      toast.error('Por favor, inicie sesión para publicar un servicio.');
       return;
     }
 
     if (!serviceData.service_type) {
-      setError('Service type is required.');
+      setError('El tipo de servicio es obligatorio.');
       return;
     }
 
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
+    if (!validatePhone(serviceData.phone)) {
+      setError('El número de teléfono debe tener 9 dígitos.');
+      return;
+    }
 
-    if (isEditMode) {
-      // PATCH
-      let fullServiceData = Object.fromEntries(Object.entries(serviceData).filter(([key, value]) => value !== originalServiceData[key]));
-      setIsLoading(true);
+    const formData = new FormData();
+    formData.append('user_id', user.uid);
+    formData.append('dni', serviceData.dni);
+    formData.append('phone', serviceData.phone);
+    formData.append('address', serviceData.address);
+    formData.append('description', serviceData.description);
+    formData.append('service_type', serviceData.service_type);
+    formData.append('modalities', serviceData.modalities);
 
-      console.log('Submitting PATCH request with data:', fullServiceData);
+    formData.append('status', 'Available');
+    formData.append('lat', serviceData.lat);
+    formData.append('lng', serviceData.lng);
+    formData.append('user_img', serviceData.user_img);
+    serviceData.serviceImages.forEach((image, index) => {
+      formData.append(`serviceImages`, image);
+    });
 
-      try {
-        const response = await fetch(`http://localhost:3001/api/services/${currentServiceId}`, {
-          method: 'PATCH',
-          headers: headers,
-          body: JSON.stringify(fullServiceData),
-        });
-        setIsLoading(false);
-        if (!response.ok) throw new Error('Failed to update service');
-        const data = await response.json();
-        console.log('Server response:', data);
-        alert('Service updated successfully');
-        fetchServices(); // Refresh list after updating
-        setShowForm(false); // Close the form after submission
-        setIsEditMode(false); // Reset edit mode
-        setServiceData({
-          dni: '',
-          phone: '',
-          address: '',
-          lat: null,
-          lng: null,
-          description: '',
-          service_type: '',
-          modalities: 'Presencial',
-          cost: '',
-          user_img: ''
-        }); // Reset form fields
-      } catch (error) {
-        setIsLoading(false);
-        console.error('Error:', error);
-        alert('Error updating service');
-      }
-    } else {
-      // POST
-      const fullServiceData = {
-        user_id: user.uid,
-        dni: serviceData.dni || 'N/A',
-        phone: serviceData.phone || 'N/A',
-        address: serviceData.address || 'N/A',
-        lat: serviceData.lat,
-        lng: serviceData.lng,
-        description: serviceData.description || 'N/A',
-        service_type: serviceData.service_type,
-        modalities: serviceData.modalities,
-        cost: serviceData.cost || 0,
-        status: 'Available',
-        user_img: serviceData.user_img || 'default.png'
-      };
+    setIsLoading(true);
 
-      setIsLoading(true);
-
-      console.log('Submitting POST request with data:', fullServiceData);
-
-      try {
-        const response = await fetch('http://localhost:3001/api/services', {
+    try {
+      const response = isEditMode 
+        ? await fetch(`${api.apiBaseUrl}/api/services/${currentServiceId}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData,
+          })
+        : await fetch(`${api.apiBaseUrl}/api/services`, {
             method: 'POST',
-            headers: headers,
-            body: JSON.stringify(fullServiceData),
-        });
-        setIsLoading(false);
-        if (!response.ok) throw new Error('Failed to create service');
-        const data = await response.json();
-        console.log('Server response:', data);
-        alert('Service created successfully');
-        fetchServices(); // Refresh list after posting
-        setShowForm(false); // Close the form after submission
-        setServiceData({
-            dni: '',
-            phone: '',
-            address: '',
-            lat: null,
-            lng: null,
-            description: '',
-            service_type: '',
-            modalities: 'Presencial',
-            cost: '',
-            user_img: ''
-        }); // Reset form fields
-      } catch (error) {
-        setIsLoading(false);
-        console.error('Error:', error);
-        alert('Error creating service');
-      }
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData,
+          });
+
+      setIsLoading(false);
+      if (!response.ok) throw new Error(`Error al ${isEditMode ? 'editar' : 'crear'} el servicio`);
+      const data = await response.json();
+      toast.success(`Servicio ${isEditMode ? 'editado' : 'creado'} con éxito`);
+      fetchServices();
+      setShowForm(false);
+      setServiceData({
+        phone: '',
+        address: '',
+        lat: null,
+        lng: null,
+        description: '',
+        service_type: '',
+        modalities: 'Presencial',
+        user_img: '',
+        serviceImages: []
+      });
+      setIsEditMode(false);
+      setCurrentServiceId(null);
+    } catch (error) {
+      setIsLoading(false);
+      console.error('Error:', error);
+      toast.error(`Error al ${isEditMode ? 'editar' : 'crear'} el servicio`);
     }
   };
 
   const handleEdit = (service) => {
     if (service.user_id !== user.uid) {
-      alert('You can only edit your own services.');
+      toast.error('Solo puede editar sus propios servicios.');
       return;
     }
     setServiceData({
-      dni: service.dni,
       phone: service.phone,
       address: service.address,
       lat: service.lat,
@@ -276,11 +284,10 @@ const PostService = () => {
       description: service.description,
       service_type: service.service_type,
       modalities: service.modalities,
-      cost: service.cost,
-      user_img: service.user_img
+      user_img: service.user_img,
+      serviceImages: service.serviceImages || []
     });
     setOriginalServiceData({
-      dni: service.dni,
       phone: service.phone,
       address: service.address,
       lat: service.lat,
@@ -288,8 +295,8 @@ const PostService = () => {
       description: service.description,
       service_type: service.service_type,
       modalities: service.modalities,
-      cost: service.cost,
-      user_img: service.user_img
+      user_img: service.user_img,
+      serviceImages: service.serviceImages || []
     });
     setCurrentServiceId(service.id);
     setIsEditMode(true);
@@ -300,7 +307,7 @@ const PostService = () => {
     const updatedStatus = service.status === 'Available' ? 'Expired' : 'Available';
 
     try {
-      const response = await fetch(`http://localhost:3001/api/services/${service.id}`, {
+      const response = await fetch(`${api.apiBaseUrl}/api/services/${service.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -308,172 +315,181 @@ const PostService = () => {
         },
         body: JSON.stringify({ status: updatedStatus }),
       });
-      if (!response.ok) throw new Error('Failed to update status');
-      fetchServices(); // Refresh list after updating status
+      if (!response.ok) throw new Error('Error al actualizar el estado del servicio');
+      fetchServices();
+      toast.success(`Estado del servicio actualizado a ${updatedStatus}`);
     } catch (error) {
-      console.error('Error updating status:', error);
+      console.error('Error al actualizar el estado:', error);
+      toast.error('Error al actualizar el estado del servicio');
     }
   };
 
   const handleDelete = async (serviceId) => {
     const service = services.find(s => s.id === serviceId);
     if (!service || service.user_id !== user.uid) {
-      alert('You can only delete your own services.');
+      toast.error('Solo puede eliminar sus propios servicios.');
       return;
     }
-    const confirmed = window.confirm('Are you sure you want to delete this service?');
-    if (confirmed) {
+    
+    showConfirmDialog(async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/services/${serviceId}`, {
+        const response = await fetch(`${api.apiBaseUrl}/api/services/${serviceId}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-        if (!response.ok) throw new Error('Failed to delete service');
-        alert('Service deleted successfully');
-        fetchServices(); // Refresh list after deletion
+        if (!response.ok) throw new Error('Error al eliminar el servicio');
+        toast.success('Servicio eliminado con éxito');
+        fetchServices();
       } catch (error) {
-        console.error('Error deleting service:', error);
-        alert('Error deleting service');
+        console.error('Error al eliminar el servicio:', error);
+        toast.error('Error al eliminar el servicio');
       }
-    }
+    });
   };
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
+  const handleShowForm = () => {
+    if (!isProfileComplete) {
+      toast.error('Por favor, completa tu perfil antes de publicar un servicio.');
+      navigate('/UserProfile');
+    } else {
+      setShowForm(!showForm);
+    }
+  };
+
   return (
     <div className="container mt-4">
-      <div className="card">
-        <div className="card-body">
-          <h5 className="card-title">{isEditMode ? 'Edit Service' : 'Post a New Service'}</h5>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Hide Form' : isEditMode ? 'Edit Service' : 'Publish New Job'}
-          </button>
-          {showForm && (
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label>Service Type</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="service_type"
-                  value={serviceData.service_type}
-                  onChange={handleChange}
-                  placeholder="Tipo de Servicio"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>DNI</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="dni"
-                  value={serviceData.dni}
-                  onChange={handleChange}
-                  placeholder="Ingrese DNI"
-                />
-              </div>
-              <div className="form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  className="form-control"
-                  name="phone"
-                  value={serviceData.phone}
-                  onChange={handleChange}
-                  placeholder="Ingrese número de teléfono"
-                />
-              </div>
-              <div className="form-group">
-                <label>Address</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  name="address"
-                  value={serviceData.address}
-                  onChange={handleChange}
-                  ref={addressInputRef}
-                  placeholder="Ingrese dirección"
-                />
-              </div>
-              <div className="form-group">
-                <label>Location</label>
-                <div id="map" style={{ height: '300px', width: '100%' }}></div>
-              </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  className="form-control"
-                  name="description"
-                  value={serviceData.description}
-                  onChange={handleChange}
-                  placeholder="Ingrese descripción del servicio"
-                ></textarea>
-              </div>
-              <div className="form-group">
-                <label>Modalities</label>
-                <select
-                  className="form-control"
-                  name="modalities"
-                  value={serviceData.modalities}
-                  onChange={handleChange}
-                >
-                  <option value="Presencial">Presencial</option>
-                  <option value="Virtual">Virtual</option>
-                  <option value="Ambos">Ambos</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Cost ($)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  name="cost"
-                  value={serviceData.cost}
-                  onChange={handleChange}
-                  placeholder="Ingrese costo del servicio"
-                />
-              </div>
-              {error && <div className="alert alert-danger">{error}</div>}
-              <button type="submit" className="btn btn-success mt-3" disabled={isLoading}>
-                {isLoading ? 'Submitting...' : 'Submit'}
-              </button>
-            </form>
+      <ToastContainer />
+      <div className="section">
+        <h2 className="section-title">{isEditMode ? 'Editar Servicio' : 'Publicar Nuevo Servicio'}</h2>
+        <button className="btn btn-primary mb-3" onClick={handleShowForm}>
+          {showForm ? 'Ocultar Formulario' : isEditMode ? 'Editar Servicio' : 'Publicar Nuevo Servicio'}
+        </button>
+        {showForm && (
+          <form onSubmit={handleSubmit} className="service-form">
+            <div className="form-group">
+              <label>Tipo de Servicio <img src={infoIcon} alt="info" title="Ingrese el tipo de servicio que está ofreciendo" className="info-icon" /></label>
+              <input
+                type="text"
+                className="form-control"
+                name="service_type"
+                value={serviceData.service_type}
+                onChange={handleChange}
+                placeholder="Tipo de Servicio"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Teléfono <img src={infoIcon} alt="info" title="Ingrese un número de teléfono de 9 dígitos" className="info-icon" /></label>
+              <input
+                type="tel"
+                className="form-control"
+                name="phone"
+                value={serviceData.phone}
+                onChange={handleChange}
+                placeholder="Ingrese número de teléfono"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Dirección <img src={infoIcon} alt="info" title="Ingrese la dirección donde se proporcionará el servicio" className="info-icon" /></label>
+              <input
+                type="text"
+                className="form-control"
+                name="address"
+                value={serviceData.address}
+                onChange={handleChange}
+                ref={addressInputRef}
+                placeholder="Ingrese dirección"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Ubicación <img src={infoIcon} alt="info" title="Seleccione la ubicación en el mapa" className="info-icon" /></label>
+              <div id="map" style={{ height: '300px', width: '100%' }}></div>
+            </div>
+            <div className="form-group">
+              <label>Descripción <img src={infoIcon} alt="info" title="Proporcione una descripción detallada del servicio" className="info-icon" /></label>
+              <ReactQuill
+                theme="snow"
+                value={serviceData.description}
+                onChange={handleDescriptionChange}
+                placeholder="Ingrese descripción del servicio"
+              />
+            </div>
+            <div className="form-group">
+              <label>Modalidades <img src={infoIcon} alt="info" title="Seleccione las modalidades del servicio (Presencial, Virtual, Ambos)" className="info-icon" /></label>
+              <select
+                className="form-control"
+                name="modalities"
+                value={serviceData.modalities}
+                onChange={handleChange}
+                required
+              >
+                <option value="Presencial">Presencial</option>
+                <option value="Virtual">Virtual</option>
+                <option value="Ambos">Ambos</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Imágenes del Servicio <img src={infoIcon} alt="info" title="Seleccione imágenes que representen el servicio" className="info-icon" /></label>
+              <input
+                type="file"
+                className="form-control"
+                name="serviceImages"
+                multiple
+                onChange={handleImageChange}
+              />
+            </div>
+            {error && <div className="alert alert-danger">{error}</div>}
+            <button type="submit" className="btn btn-success mt-3" disabled={isLoading}>
+              {isLoading ? 'Enviando...' : 'Enviar'}
+            </button>
+          </form>
+        )}
+      </div>
+
+      <div className="section mt-4">
+        <h2 className="section-title">Tus Servicios</h2>
+        <div className="service-list">
+          {services.length === 0 && (
+            <div className="no-services">
+              <img src={imagenRelleno} alt="No services available" />
+              <p></p>
+            </div>
           )}
-          <div className="mt-4">
-            {services.map((service) => (
-              <div key={service.id} className="card mt-2">
-                <div className="card-body">
-                  <h5 className="card-title">
-                    {service.service_type} - {service.status}
-                  </h5>
-                  <p className="card-text">{service.description}</p>
-                  <p className="card-text">Cost: ${service.cost}</p>
-                  <p className="card-text">Modalities: {service.modalities}</p>
-                  <p className="card-text">Address: {service.address}</p>
-                  <p className="card-text">Phone: {service.phone}</p>
-                  <div className="d-flex justify-content-between">
-                    <button className="btn btn-warning" onClick={() => handleEdit(service)}>
-                      Edit
-                    </button>
-                    <button
-                      className={`btn ${service.status === 'Available' ? 'btn-success' : 'btn-danger'}`}
-                      onClick={() => handleStatusToggle(service)}
-                    >
-                      {service.status === 'Available' ? 'Available' : 'Expired'}
-                    </button>
-                    <button className="btn btn-danger" onClick={() => handleDelete(service.id)}>
-                      Delete
-                    </button>
-                  </div>
+          {services.map((service) => (
+            <div key={service.id} className="card service-item mt-2">
+              <div className="card-body">
+                <h5 className="card-title">
+                  {service.service_type} - {service.status}
+                </h5>
+                <p className="card-text" dangerouslySetInnerHTML={{ __html: service.description }}></p>
+                <p className="card-text">Modalidades: {service.modalities}</p>
+                <p className="card-text">Dirección: {service.address}</p>
+                <p className="card-text">Teléfono: {service.phone}</p>
+                <div className="d-flex justify-content-between">
+                  <button className="btn btn-warning" onClick={() => handleEdit(service)}>
+                    Editar
+                  </button>
+                  <button
+                    className={`btn ${service.status === 'Available' ? 'btn-success' : 'btn-danger'}`}
+                    onClick={() => handleStatusToggle(service)}
+                  >
+                    {service.status === 'Available' ? 'Disponible' : 'Expirado'}
+                  </button>
+                  <button className="btn btn-danger" onClick={() => handleDelete(service.id)}>
+                    Eliminar
+                  </button>
                 </div>
-              </div>
-            ))}
-          </div>
+              </div>  
+            </div>
+          ))}
         </div>
       </div>
     </div>

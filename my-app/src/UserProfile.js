@@ -2,37 +2,40 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import './UserProfile.css';
 import profileimg from './assets/profile.jpg';
+import api from './api';
 
 const UserProfile = () => {
   const { user, loading } = useAuth();
-  const [profile, setProfile] = useState({ nombre: '', apellido: '', edad: '', direccion: '', foto: '' });
-  const [isLoaded, setIsLoaded] = useState(false);  // Nuevo estado para controlar la carga inicial
-
+  const [profile, setProfile] = useState({
+    nombre: '', apellido: '', edad: '', foto: '', dni: '', phone: ''
+  });
+  const [isLoaded, setIsLoaded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [isUpdatingImage, setIsUpdatingImage] = useState(false);
   const fileInputRef = useRef(null);
-  const [originalPhoto, setOriginalPhoto] = useState(''); // Estado para guardar la foto original
+  const [originalPhoto, setOriginalPhoto] = useState('');
 
   useEffect(() => {
-    if (user && user.uid && !isLoaded) {  // Asegúrate de que se ejecute solo una vez que el usuario está completamente cargado y solo una vez
-      fetch(`http://localhost:3001/api/user/${user.uid}`)
+    if (user && user.uid && !isLoaded) {
+      fetch(`${api.apiBaseUrl}/api/user/${user.uid}`)
         .then(response => response.json())
         .then(data => {
           setProfile({
             nombre: data.nombre || '',
             apellido: data.apellido || '',
-            edad: data.edad || '',
-            direccion: data.direccion || '',
-            foto: data.foto || profileimg
+            edad: data.edad ? data.edad.toString() : '',
+            foto: data.foto || profileimg,
+            dni: data.dni || '',
+            phone: data.phone || ''
           });
-          setOriginalPhoto(data.foto); // Guarda la foto actual como original
-          setIsLoaded(true);  // Establecer que los datos se han cargado
+          setOriginalPhoto(data.foto);
+          setIsLoaded(true);
         })
         .catch(error => console.error('Error al obtener los datos del usuario:', error));
     } else {
       console.log("Esperando datos del usuario...");
     }
-  }, [user, user?.uid]); // Añade 'user?.uid' como dependencia si es necesario
+  }, [user, user?.uid]);
 
   const handleEdit = () => {
     setEditMode(!editMode);
@@ -40,20 +43,33 @@ const UserProfile = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setProfile(prev => ({ ...prev, [name]: value }));
+    setProfile(prev => ({ ...prev, [name]: value || null }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    fetch(`http://localhost:3001/api/user/${user.uid}`, {
+  
+    const updatedFields = Object.keys(profile).reduce((acc, key) => {
+      if (profile[key] !== '' && profile[key] !== null) {
+        acc[key] = profile[key];
+      }
+      return acc;
+    }, {});
+  
+    fetch(`${api.apiBaseUrl}/api/user/${user.uid}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(profile)
+      body: JSON.stringify(updatedFields)
     })
     .then(response => response.json())
-    .then(() => setIsUpdatingImage(false))
+    .then(() => {
+      setEditMode(false);
+      setIsUpdatingImage(false);
+    })
     .catch(error => console.error('Error al actualizar el perfil:', error));
   };
+  
+  
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -70,33 +86,35 @@ const UserProfile = () => {
   const handleFileChange = () => {
     const file = fileInputRef.current.files[0];
     if (!file) return;
-
+  
     const formData = new FormData();
     formData.append('profilePic', file);
     formData.append('userId', user.uid);
-
-    fetch('http://localhost:3001/api/upload', {
+  
+    fetch(`${api.apiBaseUrl}/api/upload/profile`, {
       method: 'POST',
       body: formData,
     })
     .then(response => response.json())
     .then(data => {
       if (data.imageUrl) {
-        setProfile(prev => ({ ...prev, foto: `http://localhost:3001${data.imageUrl}` }));
-        setOriginalPhoto(`http://localhost:3001${data.imageUrl}`);
-
+        setProfile(prev => ({ ...prev, foto: `${api.apiBaseUrl}${data.imageUrl}` }));
+        setOriginalPhoto(`${api.apiBaseUrl}${data.imageUrl}`);
+  
         // Actualizar la base de datos después de cargar la imagen
-        fetch(`http://localhost:3001/api/user/${user.uid}`, {
+        const updatedFields = { foto: `${api.apiBaseUrl}${data.imageUrl}` };
+  
+        fetch(`${api.apiBaseUrl}/api/user/${user.uid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ foto: `http://localhost:3001${data.imageUrl}` })
+          body: JSON.stringify(updatedFields)
         });
-
+  
         // Actualizar la imagen en la tabla de servicios
-        fetch(`http://localhost:3001/api/services/${user.uid}`, {
+        fetch(`${api.apiBaseUrl}/api/services/${user.uid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_img: `http://localhost:3001${data.imageUrl}` })
+          body: JSON.stringify({ user_img: `${api.apiBaseUrl}${data.imageUrl}` })
         })
         .then(() => setIsUpdatingImage(false))
         .catch(error => console.error('Error al actualizar la imagen del servicio:', error));
@@ -104,16 +122,18 @@ const UserProfile = () => {
     })
     .catch(error => {
       console.error('Error al subir la imagen:', error);
-      setIsUpdatingImage(false);  // Oculta los botones si hay un error
+      setIsUpdatingImage(false);
     });
   };
+  
 
   const handleCancel = () => {
-    setProfile(prev => ({ ...prev, foto: originalPhoto })); // Restablece la foto original
+    setProfile(prev => ({ ...prev, foto: originalPhoto }));
     setIsUpdatingImage(false);
+    setEditMode(false);
   };
 
-  const imageUrl = profile.foto.startsWith('http') ? profile.foto : `http://localhost:3001${profile.foto}`;
+  const imageUrl = profile.foto.startsWith('http') ? profile.foto : `${api.apiBaseUrl}${profile.foto}`;
 
   if (loading || !isLoaded) return <p>Cargando perfil...</p>;
 
@@ -146,17 +166,19 @@ const UserProfile = () => {
                 <div>
                   <h5 className="card-title">{profile.nombre} {profile.apellido}</h5>
                   <p className="card-text">Edad: {profile.edad}</p>
-                  <p className="card-text">Dirección: {profile.direccion}</p>
+                  <p className="card-text">DNI: {profile.dni}</p>
+                  <p className="card-text">Teléfono: {profile.phone}</p>
                   <button onClick={handleEdit} className="btn btn-primary">Editar Perfil</button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit}>
-                  <input type="text" name="nombre" value={profile.nombre} onChange={handleChange} className="form-control mb-2" placeholder="Nombre" />
-                  <input type="text" name="apellido" value={profile.apellido} onChange={handleChange} className="form-control mb-2" placeholder="Apellido" />
-                  <input type="number" name="edad" value={profile.edad} onChange={handleChange} className="form-control mb-2" placeholder="Edad" />
-                  <textarea name="direccion" value={profile.direccion} onChange={handleChange} className="form-control mb-2" placeholder="Dirección" />
+                  <input type="text" name="nombre" value={profile.nombre || ''} onChange={handleChange} className="form-control mb-2" placeholder="Nombre" />
+                  <input type="text" name="apellido" value={profile.apellido || ''} onChange={handleChange} className="form-control mb-2" placeholder="Apellido" />
+                  <input type="number" name="edad" value={profile.edad || ''} onChange={handleChange} className="form-control mb-2" placeholder="Edad" />
+                  <input type="text" name="dni" value={profile.dni || ''} onChange={handleChange} className="form-control mb-2" placeholder="DNI" />
+                  <input type="text" name="phone" value={profile.phone || ''} onChange={handleChange} className="form-control mb-2" placeholder="Teléfono" />
                   <button type="submit" className="btn btn-success">Guardar Cambios</button>
-                  <button onClick={handleEdit} className="btn btn-secondary">Cancelar</button>
+                  <button onClick={handleCancel} className="btn btn-secondary">Cancelar</button>
                 </form>
               )}
             </div>

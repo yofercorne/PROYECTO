@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { useAuth } from '../AuthContext';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGoogle } from '@fortawesome/free-brands-svg-icons';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import appfirebase from '../credenciales';
-
+import './login.css';
+import loginImage from '../assets/inicio.png'; // Asegúrate de poner la ruta correcta de tu imagen
+import api from '../api';
 const Login = () => {
   const [userCredentials, setUserCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -29,12 +29,8 @@ const Login = () => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, userCredentials.email, userCredentials.password);
       const user = userCredential.user;
-      if (user.emailVerified) {
-        login(user);
-        navigate('/'); // Redirigir al usuario a la página de inicio después de iniciar sesión
-      } else {
-        setError("Please verify your email before logging in.");
-      }
+      login(user);
+      navigate('/'); // Redirigir al usuario a la página de inicio después de iniciar sesión
     } catch (error) {
       console.error('Error during sign in:', error);
       setError(error.message);
@@ -44,13 +40,32 @@ const Login = () => {
   const handleGoogleSignIn = () => {
     const provider = new GoogleAuthProvider();
     signInWithPopup(auth, provider)
-      .then((result) => {
+      .then(async (result) => {
         const user = result.user;
-        if (user.emailVerified) {
+        const response = await fetch(`${api.apiBaseUrl}/api/check-user?email=${user.email}`);
+        const data = await response.json();
+
+        if (data.exists) {
+          // Si el usuario ya está registrado, inicia sesión
           login(user);
-          navigate('/'); // Redirigir al usuario a la página de inicio después de iniciar sesión
+          navigate('/');
         } else {
-          setError("Please verify your email before logging in.");
+          // Si el usuario no está registrado, regístralo automáticamente
+          await fetch(`${api.apiBaseUrl}/api/user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: user.uid,
+              correo: user.email,
+              nombre: user.displayName || '',
+              apellido: '',
+              edad: 0,
+              phone: '',
+              foto: user.photoURL || ''
+            })
+          });
+          login(user);
+          navigate('/');
         }
       })
       .catch((error) => {
@@ -60,47 +75,49 @@ const Login = () => {
   };
 
   return (
-    <div className="container mt-5">
-      <div className="row justify-content-center">
-        <div className="col-lg-4 col-md-6 col-sm-8">
-          <div className="card shadow">
-            <div className="card-body">
-              <h3 className="card-title text-center">Iniciar Sesión</h3>
-              {error && <div className="alert alert-danger">{error}</div>}
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label htmlFor="email" className="form-label">Email</label>
-                  <input
-                    type="email"
-                    className="form-control"
-                    id="email"
-                    name="email"
-                    value={userCredentials.email}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label htmlFor="password" className="form-label">Contraseña</label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    id="password"
-                    name="password"
-                    value={userCredentials.password}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="d-grid gap-2">
-                  <button type="submit" className="btn btn-primary">Iniciar Sesión</button>
-                  <button type="button" className="btn btn-danger" onClick={handleGoogleSignIn}>
-                    <FontAwesomeIcon icon={faGoogle} /> Inicia sesión con Google
-                  </button>
-                </div>
-              </form>
-            </div>
+    <div className="login-container">
+      <div className="login-content">
+        <div className="login-image">
+          <img src={loginImage} alt="Login" />
+        </div>
+        <div className="login-card">
+          <h3 className="login-title">Ingresa a tu cuenta</h3>
+          <p className="login-subtitle">¡Hola! Accede y encuentra el trabajo que buscas</p>
+          {error && <div className="login-error">{error}</div>}
+          <div className="external-providers">
+            <button type="button" className="btn btn-outline-primary google-btn" onClick={handleGoogleSignIn}>
+              <i className="fab fa-google"></i> Iniciar sesión con Google
+            </button>
           </div>
+          <form onSubmit={handleSubmit} className="login-form">
+            <div className="mb-3">
+              <label htmlFor="email" className="form-label">Email</label>
+              <input
+                type="email"
+                className="form-control login-input"
+                id="email"
+                name="email"
+                value={userCredentials.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="mb-3">
+              <label htmlFor="password" className="form-label">Contraseña</label>
+              <input
+                type="password"
+                className="form-control login-input"
+                id="password"
+                name="password"
+                value={userCredentials.password}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn-primary login-btn">Iniciar Sesión</button>
+            <p className="forgot-password">Olvidé mi contraseña</p>
+          </form>
+          <p className="register-link">¿No tienes cuenta? <span onClick={() => navigate('/register')}>Regístrate como candidato</span></p>
         </div>
       </div>
     </div>

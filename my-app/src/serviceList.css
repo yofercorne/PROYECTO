@@ -1,17 +1,40 @@
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css');
 
-.container {
+.service-container {
   max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+}
+
+.service-filter-title {
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+}
+
+.service-form-control {
+  margin-bottom: 15px;
+}
+
+.service-map-container {
+  margin-bottom: 15px;
+}
+
+.service-list-group {
+  padding: 20px;
 }
 
 .service-item {
   border: 1px solid #ddd;
   border-radius: 8px;
-  transition: box-shadow 0.3s ease;
+  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 20px;
+  margin-bottom: 15px;
+  background-color: #fff;
 }
 
 .service-item:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 .service-img {
@@ -22,35 +45,31 @@
   margin-right: 15px;
 }
 
-.list-rating {
+.service-list-rating {
   display: flex;
   align-items: center;
   margin-bottom: 5px;
 }
 
-.stars {
+.service-stars {
   display: flex;
 }
 
-.fa-star, .fa-star-half-alt {
+.service-fa-star,
+.service-fa-star-half-alt {
   color: lightgray;
   font-size: 1.2rem;
 }
 
-.fa-star.checked, .fa-star-half-alt.checked {
+.service-fa-star.service-checked,
+.service-fa-star-half-alt.service-checked {
   color: gold;
 }
 
-.text-muted {
+.service-text-muted {
   color: #6c757d !important;
 }
 
-.text-right {
-  text-align: right;
-}
-
-.list-group-item {
-  padding: 20px;
-  margin-bottom: 15px;
-  background-color: #fff;
+.service-text-right {
+  text-align: right;  
 }

@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import appfirebase from '../credenciales';
+import './VerifyEmail.css'; // Importa los estilos para el modal de carga
+import api from '../api';
 
 const VerifyEmail = () => {
   const [code, setCode] = useState('');
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { email, password } = location.state || {}; // Maneja el caso en que state sea undefined
@@ -21,8 +24,9 @@ const VerifyEmail = () => {
     }
 
     try {
+      setLoading(true); // Mostrar modal de carga
       // Verifica el código de verificación del email en el backend
-      const response = await fetch('http://localhost:3001/verify-email', {
+      const response = await fetch(`${api.apiBaseUrl}/verify-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code })
@@ -41,7 +45,7 @@ const VerifyEmail = () => {
           setMessage('Email successfully verified');
           localStorage.setItem('user', JSON.stringify(user));
           localStorage.setItem('isAuthenticated', 'true');
-          navigate('/login');
+          navigate('/'); // Redirigir a la página de inicio
         } else {
           setMessage('Failed to verify email');
         }
@@ -51,12 +55,20 @@ const VerifyEmail = () => {
     } catch (error) {
       setMessage(`Error verifying email: ${error.message}`);
       console.error('Error verifying email:', error);
+    } finally {
+      setLoading(false); // Ocultar modal de carga
     }
   };
 
   return (
     <div className="container mt-5">
-      <div className="row justify-content-center">
+      {loading && (
+        <div className="loading-modal">
+          <div className="loading-spinner"></div>
+          <p>Verificando...</p>
+        </div>
+      )}
+      <div className={`row justify-content-center ${loading ? 'blurred' : ''}`}>
         <div className="col-lg-4 col-md-6 col-sm-8">
           <div className="card shadow">
             <div className="card-body">

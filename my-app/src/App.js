@@ -14,6 +14,8 @@ import VerifyEmail from './components/verify-email';
 import ServiceList from './ServiceList';
 import ServiceDetails from './ServiceDetails';
 import JobDetails from './jobDetails';
+import Courses from './Courses';
+import Chatbot from './ChatbotComponent'; // Importa el componente del chatbot
 
 function App() {
   return (
@@ -33,7 +35,10 @@ function App() {
             <Route path="/service-details/:id" element={<ServiceDetails />} />
             <Route path="/job-details/:id" element={<JobDetails />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/Courses" element={<Courses />} />
           </Routes>
+          {/* Añade el componente del chatbot   <Chatbot />*/}
+          <Chatbot /> 
           <Footer />
         </div>
       </AuthProvider>

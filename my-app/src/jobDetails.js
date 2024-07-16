@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { FaStar, FaStarHalfAlt } from 'react-icons/fa';
-import { useAuth } from './AuthContext'; // Importa el contexto de autenticación
+import { useAuth } from './AuthContext';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import api from './api';
 
 const JobDetails = () => {
   const { id } = useParams();
-  const { user } = useAuth(); // Obtén el usuario autenticado del contexto
+  const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const [userRating, setUserRating] = useState(0);
   const [submittedRating, setSubmittedRating] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [selectedImage, setSelectedImage] = useState('');
 
   useEffect(() => {
-    fetch(`http://localhost:3001/api/jobs/${id}`)
+    fetch(`${api.apiBaseUrl}/api/jobs/${id}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`HTTP status ${response.status}`);
@@ -21,11 +26,14 @@ const JobDetails = () => {
       })
       .then(data => {
         if (!data) {
-          setError('No data found for this job');
+          setError('No se encontraron datos para este trabajo');
         } else {
           setJob(data);
+          if (data.images && data.images.length > 0) {
+            setSelectedImage(data.images[0]);
+          }
           if (user && user.uid) {
-            fetch(`http://localhost:3001/api/ratings/job/${id}/user/${user.uid}`) // Usa el ID del usuario autenticado
+            fetch(`${api.apiBaseUrl}/api/ratings/job/${id}/user/${user.uid}`)
               .then(response => {
                 if (!response.ok) {
                   if (response.status === 404) {
@@ -45,8 +53,23 @@ const JobDetails = () => {
                   setError(error.toString());
                 }
               });
+
+            fetch(`${api.apiBaseUrl}/api/check-subscription`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ userId: user.uid, publisherId: data.user_id })
+            })
+              .then(response => response.json())
+              .then(subscriptionData => {
+                setIsSubscribed(subscriptionData.subscribed);
+              })
+              .catch(error => {
+                setError(error.toString());
+              });
           } else {
-            setError('User not authenticated');
+            setError('Usuario no autenticado');
           }
         }
       })
@@ -58,14 +81,14 @@ const JobDetails = () => {
   const handleRating = (rating) => {
     setUserRating(rating);
     if (user && user.uid) {
-      fetch('http://localhost:3001/api/ratings', {
+      fetch(`${api.apiBaseUrl}/api/ratings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           jobId: id,
-          userId: user.uid, // Usa el ID del usuario autenticado
+          userId: user.uid,
           rating: rating,
         }),
       })
@@ -75,7 +98,7 @@ const JobDetails = () => {
             throw new Error(data.error);
           }
           setSubmittedRating(true);
-          fetch(`http://localhost:3001/api/jobs/${id}`)
+          fetch(`${api.apiBaseUrl}/api/jobs/${id}`)
             .then(response => response.json())
             .then(data => {
               setJob(data);
@@ -85,7 +108,63 @@ const JobDetails = () => {
           setError(error.message);
         });
     } else {
-      setError('User not authenticated');
+      setError('Usuario no autenticado');
+    }
+  };
+
+  const handleSubscribe = async (publisherId) => {
+    if (!user || !user.uid) {
+      setError('Usuario no autenticado');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${api.apiBaseUrl}/api/subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ publisherId, userId: user.uid })
+      });
+
+      if (response.ok) {
+        toast.success('Te has suscrito a las notificaciones de este usuario.');
+        setIsSubscribed(true);
+      } else {
+        const errorData = await response.json();
+        toast.error(`Error: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al suscribirse a las notificaciones.');
+    }
+  };
+
+  const handleUnsubscribe = async (publisherId) => {
+    if (!user || !user.uid) {
+      setError('Usuario no autenticado');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${api.apiBaseUrl}/api/unsubscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ publisherId, userId: user.uid })
+      });
+
+      if (response.ok) {
+        toast.success('Te has desuscrito de las notificaciones de este usuario.');
+        setIsSubscribed(false);
+      } else {
+        const errorData = await response.json();
+        toast.error(`Error: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al desuscribirse de las notificaciones.');
     }
   };
 
@@ -94,7 +173,7 @@ const JobDetails = () => {
   }
 
   if (!job) {
-    return <div style={styles.loadingMessage}>Loading...</div>;
+    return <div style={styles.loadingMessage}>Cargando...</div>;
   }
 
   const renderStars = (rating, interactive = false) => {
@@ -137,42 +216,68 @@ const JobDetails = () => {
 
   return (
     <div style={styles.container}>
+      <ToastContainer />
       <div style={styles.card}>
-        <div style={styles.cardImage}>
-          <img src={userImage} alt={job.job_title} style={styles.image} />
+        <div style={styles.imageGallery}>
+          <div style={styles.thumbnails}>
+            {job.images?.map((image, index) => (
+              <div key={index} style={styles.thumbnail} onClick={() => setSelectedImage(image)}>
+                <img src={`${api.apiBaseUrl}${image}`} alt={`Thumbnail ${index}`} style={styles.thumbnailImage} />
+              </div>
+            ))}
+          </div>
+          <div style={styles.selectedImage}>
+            {selectedImage && <img src={`${api.apiBaseUrl}${selectedImage}`} alt="Selected" style={styles.image} />}
+          </div>
         </div>
         <div style={styles.cardBody}>
           <div style={styles.cardHeader}>
             <h1 style={styles.cardTitle}>{job.job_title}</h1>
-            <h2 style={styles.cardSubtitle}>Offered by: {job.company}</h2>
+            <h2 style={styles.cardSubtitle}>Ofrecido por: {job.company}</h2>
             <div style={{ ...styles.status, ...statusStyles }}>{job.status}</div>
             <div style={styles.ratingSection}>
               {renderStars(parseFloat(job.rating) || 0)}
-              <p style={styles.ratingScore}>{averageRating} / 5.0 ({job.rating_count} reviews)</p>
+              <p style={styles.ratingScore}>{averageRating} / 5.0 ({job.rating_count} opiniones)</p>
             </div>
           </div>
+          
           <div style={styles.detailRow}>
-            <span style={styles.detailLabel}>Description:</span>
-            <span style={styles.detailValue}>{job.description}</span>
-          </div>
-          <div style={styles.detailRow}>
-            <span style={styles.detailLabel}>Salary:</span>
+            <span style={styles.detailLabel}>Salario:</span>
             <span style={styles.detailValue}>${job.salary}</span>
           </div>
           <div style={styles.detailRow}>
-            <span style={styles.detailLabel}>Location:</span>
+            <span style={styles.detailLabel}>Ubicación:</span>
             <span style={styles.detailValue}>{job.location}</span>
           </div>
           <div style={styles.detailRow}>
-            <span style={styles.detailLabel}>Job Type:</span>
+            <span style={styles.detailLabel}>Tipo de Trabajo:</span>
             <span style={styles.detailValue}>{job.job_type}</span>
           </div>
+          <div style={styles.detailRow}>
+            <span style={styles.detailLabel}>Descripción:</span>
+            <span style={styles.detailValue}>{job.description}</span>
+          </div>
           <div style={styles.userRatingSection}>
-            <h5 style={styles.sectionTitle}>Your Rating:</h5>
+            <h5 style={styles.sectionTitle}>Tu Calificación:</h5>
             {renderStars(userRating, true)}
             <p style={styles.ratingScore}>{userRating} / 5.0</p>
-            {submittedRating && <p style={styles.successMessage}>Thanks for your rating!</p>}
+            {submittedRating && <p style={styles.successMessage}>¡Gracias por tu calificación!</p>}
           </div>
+          {isSubscribed ? (
+            <button
+              style={styles.unsubscribedButton}
+              onClick={() => handleUnsubscribe(job.user_id)}
+            >
+              Desuscribirse de las notificaciones de este usuario
+            </button>
+          ) : (
+            <button
+              style={styles.subscribeButton}
+              onClick={() => handleSubscribe(job.user_id)}
+            >
+              Suscribirse a notificaciones de este usuario
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -187,25 +292,46 @@ const styles = {
   },
   card: {
     display: 'flex',
-    flexDirection: 'row',
+    flexDirection: 'column',
     borderRadius: '8px',
     overflow: 'hidden',
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
-    backgroundColor: 'white'
+    backgroundColor: 'white',
+    padding: '20px'
   },
-  cardImage: {
-    flex: '1',
-    padding: '20px',
+  imageGallery: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center'
+    marginTop: '20px',
+    textAlign: 'center'  // Center text and images horizontally
+  },
+  thumbnails: {
+    display: 'flex',
+    flexDirection: 'column',
+    marginRight: '20px'
+  },
+  thumbnail: {
+    marginBottom: '10px',
+    cursor: 'pointer'
+  },
+  thumbnailImage: {
+    width: '70px',
+    height: '70px',
+    objectFit: 'cover',
+    borderRadius: '4px',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+  },
+  selectedImage: {
+    flex: '1',
+    maxWidth: '60%',  // Reduce the maximum width to fit better
+    borderRadius: '8px'
   },
   image: {
     maxWidth: '100%',
     borderRadius: '8px'
   },
   cardBody: {
-    flex: '2',
     padding: '20px'
   },
   cardHeader: {
@@ -298,6 +424,24 @@ const styles = {
     color: 'green',
     fontWeight: 'bold',
     marginTop: '10px'
+  },
+  subscribeButton: {
+    backgroundColor: 'blue',
+    color: 'white',
+    padding: '10px 20px',
+    border: 'none',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    marginTop: '20px'
+  },
+  unsubscribedButton: {
+    backgroundColor: 'red',
+    color: 'white',
+    padding: '10px 20px',
+    border: 'none',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    marginTop: '20px'
   }
 };
 

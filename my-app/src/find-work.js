@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import './findWork.css';
 import profileimg from './assets/profile.jpg';
+import api from './api';
 
 const FindWork = () => {
   const [jobs, setJobs] = useState([]);
@@ -11,23 +12,19 @@ const FindWork = () => {
   const navigate = useNavigate();
   const [filters, setFilters] = useState({
     company: '',
-    jobTitle: '',
     salaryRange: '',
-    jobType: '',
-    availability: 'available',
+    availability: '',
     location: null,
-    publicationDate: ''
+    jobTitle: ''
   });
-  const [showMap, setShowMap] = useState(false);
   const [userLocation, setUserLocation] = useState({ lat: 51.505, lng: -0.09 });
   const locationInputRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const jobsPerPage = 10;
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/jobs')
+    
+    fetch(`${api.apiBaseUrl}/api/jobs`)
       .then(response => response.json())
       .then(data => {
         setJobs(data);
@@ -97,7 +94,7 @@ const FindWork = () => {
     const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
 
     return (
-      <div className="stars">
+      <div className="job-stars">
         {Array.from({ length: fullStars }, (_, index) => (
           <i key={`full-${index}`} className="fa fa-star checked"></i>
         ))}
@@ -122,7 +119,11 @@ const FindWork = () => {
       ...filters,
       location
     });
-    setShowMap(false);
+    setUserLocation(location);
+    if (markerRef.current) {
+      markerRef.current.setPosition(location);
+      mapRef.current.setCenter(location);
+    }
   };
 
   const applyFilters = () => {
@@ -133,9 +134,6 @@ const FindWork = () => {
     if (filters.salaryRange) {
       const [min, max] = filters.salaryRange.split('-').map(Number);
       filtered = filtered.filter(job => job.salary >= min && job.salary <= max);
-    }
-    if (filters.jobType) {
-      filtered = filtered.filter(job => job.job_type.toLowerCase() === filters.jobType.toLowerCase());
     }
     if (filters.availability) {
       filtered = filtered.filter(job => job.status.toLowerCase() === filters.availability.toLowerCase());
@@ -151,12 +149,6 @@ const FindWork = () => {
     }
     if (filters.jobTitle) {
       filtered = filtered.filter(job => job.job_title.toLowerCase().includes(filters.jobTitle.toLowerCase()));
-    }
-    if (filters.publicationDate) {
-      const daysAgo = parseInt(filters.publicationDate, 10);
-      const dateThreshold = new Date();
-      dateThreshold.setDate(dateThreshold.getDate() - daysAgo);
-      filtered = filtered.filter(job => new Date(job.created_at) >= dateThreshold);
     }
     setFilteredJobs(filtered);
   };
@@ -193,120 +185,80 @@ const FindWork = () => {
   };
 
   useEffect(() => {
-    if (showMap && window.google && window.google.maps) {
+    if (window.google && window.google.maps) {
       initMap();
     }
-  }, [showMap]);
+  }, []);
 
   const resetFilters = () => {
     setFilters({
       company: '',
-      jobTitle: '',
       salaryRange: '',
-      jobType: '',
-      availability: 'available',
+      availability: '',
       location: null,
-      publicationDate: ''
+      jobTitle: ''
     });
     setFilteredJobs(jobs);
   };
 
-  const paginate = (pageNumber) => setCurrentPage(pageNumber);
-
-  const indexOfLastJob = currentPage * jobsPerPage;
-  const indexOfFirstJob = indexOfLastJob - jobsPerPage;
-  const currentJobs = filteredJobs.slice(indexOfFirstJob, indexOfLastJob);
-
-  const pageNumbers = [];
-  for (let i = 1; i <= Math.ceil(filteredJobs.length / jobsPerPage); i++) {
-    pageNumbers.push(i);
-  }
-
   return (
-    <div className="container mt-4">
+    <div className="job-container mt-4">
       <div className="row">
         <div className="col-md-3">
           <h5 className="filter-title">Filtros de Búsqueda</h5>
           <input
             type="text"
-            className="form-control mb-3"
-            placeholder="Empresa"
-            name="company"
-            value={filters.company}
-            onChange={handleFilterChange}
-          />
-          <input
-            type="text"
-            className="form-control mb-3"
-            placeholder="Título del Trabajo"
+            className="form-control job-form-control"
+            placeholder="Nombre del trabajo"
             name="jobTitle"
             value={filters.jobTitle}
             onChange={handleFilterChange}
           />
+
           <input
             type="text"
-            className="form-control mb-3"
-            placeholder="Rango Salarial"
-            name="salaryRange"
-            value={filters.salaryRange}
+            className="form-control job-form-control"
+            placeholder="Nombre de la compañia"
+            name="company"
+            value={filters.company}
             onChange={handleFilterChange}
           />
+
           <select
-            className="form-control mb-3"
-            name="jobType"
-            value={filters.jobType}
+            className="form-control service-form-control"
+            name="priceRange"
+            value={filters.salaryRange}
             onChange={handleFilterChange}
           >
-            <option value="">Tipo de Trabajo</option>
-            <option value="Tiempo Completo">Tiempo Completo</option>
-            <option value="Medio Tiempo">Medio Tiempo</option>
-            <option value="Freelance">Freelance</option>
+            <option value="">Rango de Salarial</option>
+            <option value="0-50">$0 - $50</option>
+            <option value="51-100">$51 - $100</option>
+            <option value="101-200">$101 - $200</option>
+            <option value="201-500">$201 - $500</option>
           </select>
+
+          
           <select
-            className="form-control mb-3"
+            className="form-control job-form-control"
             name="availability"
             value={filters.availability}
             onChange={handleFilterChange}
           >
+            <option value="">Disponibilidad</option>
             <option value="available">Disponible</option>
-            <option value="expired">Expirado</option>
-          </select>
-          <select
-            className="form-control mb-3"
-            name="publicationDate"
-            value={filters.publicationDate}
-            onChange={handleFilterChange}
-          >
-            <option value="">Fecha de Publicación</option>
-            <option value="1">Último día</option>
-            <option value="7">Última semana</option>
-            <option value="30">Último mes</option>
+            <option value="unavailable">No Disponible</option>
           </select>
           <input
             type="text"
-            className="form-control mb-3"
-            placeholder="Ubicación"
+            className="form-control job-form-control"
+            placeholder="Dirección"
             ref={locationInputRef}
           />
+          <div className="job-map-container mt-3">
+            <div id="map" style={{ height: '300px', width: '100%' }}></div>
+          </div>
           <button
-            className="btn btn-outline-secondary w-100 mb-2"
-            onClick={() => setShowMap(true)}
-          >
-            Seleccionar en Mapa
-          </button>
-          {showMap && (
-            <div className="map-container">
-              <div id="map" style={{ height: '300px', width: '100%' }}></div>
-              <button
-                className="btn btn-outline-secondary w-100 mb-2"
-                onClick={() => setShowMap(false)}
-              >
-                Cerrar Mapa
-              </button>
-            </div>
-          )}
-          <button
-            className="btn btn-primary w-100"
+            className="btn btn-primary w-100 mt-3"
             onClick={resetFilters}
           >
             Restablecer Filtros
@@ -315,40 +267,30 @@ const FindWork = () => {
         <div className="col-md-9">
           <h2 className="mb-4">Trabajos Disponibles</h2>
           <div className="list-group">
-            {currentJobs.map(job => (
+            {filteredJobs.map(job => (
               <div key={job.id} className="list-group-item list-group-item-action flex-column align-items-start mb-3 job-item" onClick={() => handleJobClick(job.id)}>
                 <div className="d-flex w-100 justify-content-between">
                   <div className="d-flex">
                     {renderUserImage(job.user_img)}
                     <div className="ml-3">
                       <h5 className="mb-1">{job.job_title}</h5>
-                      <div className="list-rating">
+                      <div className="job-list-rating">
                         {renderStars(job.rating)}
                       </div>
                       <p className="mb-1">{job.description}</p>
+                      <small className="job-text-muted">Modalidades: {job.modalities}</small>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <small className="text-muted"><i className="fa fa-industry mr-1"></i> {job.company}</small><br />
-                    <small className="text-muted"><i className="fa fa-map-marker-alt mr-1"></i> {job.location}</small><br />
-                    <small className="text-muted"><i className="fa fa-dollar-sign mr-1"></i> ${job.salary}</small>
+                  <div className="job-text-right">
+                    <small className="job-text-muted"><i className="fa fa-industry mr-1"></i> {job.company}</small><br />
+                    <small className="job-text-muted"><i className="fa fa-map-marker-alt mr-1"></i> {job.location}</small><br />
+                    <small className="job-text-muted"><i className="fa fa-dollar-sign mr-1"></i> ${job.salary}</small>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <nav>
-            <ul className="pagination">
-              {pageNumbers.map(number => (
-                <li key={number} className="page-item">
-                  <a onClick={() => paginate(number)} className="page-link">
-                    {number}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </div>
+        </div>  
       </div>
     </div>
   );
