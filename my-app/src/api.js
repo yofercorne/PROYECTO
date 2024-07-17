@@ -6,8 +6,9 @@
   
 
   const api = {
-    apiBaseUrl: 'http://18.233.181.228:5000'
+    apiBaseUrl: 'http://18.214.43.35:8005'
   };
+  
   
  export default api;
   
