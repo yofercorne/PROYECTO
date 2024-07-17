@@ -6,7 +6,7 @@
   
 
   const api = {
-    apiBaseUrl: 'http://18.214.43.35:8005'
+    apiBaseUrl: 'http://100.25.251.238:8006'
   };
   
   
