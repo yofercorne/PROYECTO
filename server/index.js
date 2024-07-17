@@ -23,7 +23,7 @@ const containsForbiddenWords = (text) => {
 const adminId = 'U3pxSzsCeDakd47fN4pbipALvSc2'; // Reemplaza esto con el UID de tu cuenta de administrador
 
 //::::::::::::::::::::::::::::::::::::::::::::::::::::::
-const PORT = process.env.PORT || 8005;
+const PORT = process.env.PORT || 8006;
 //const PORT = process.env.PORT || 8080; // puerto de escucha del frontend
 
 app.use(cors());
@@ -51,7 +51,7 @@ cloudinary.config({
 //
 // Conexión a MySQL
 const db = mysql.createConnection({
-  host: "18.214.43.35", // La IP elástica de tu instancia EC2
+  host: "100.25.251.238", // La IP elástica de tu instancia EC2
   user: "root",      // El usuario que creaste
   password: "Mauricio_nets4", // La contraseña que creaste
   database: "perfilusuario",
